@@ -2,7 +2,9 @@ from tkinter import *
 from tkinter import messagebox
 import tkintermapview
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
+
 
 # === LISTY DANYCH ===
 grill_spots = []
@@ -11,7 +13,7 @@ reservations = []
 
 # === ROOT I MAPA ===
 root = Tk()
-root.geometry("1200x800")
+root.geometry("1200x900")
 root.title("System Rezerwacji Terminów i Miejsc do Grillowania")
 
 map_widget = tkintermapview.TkinterMapView(root, width=1200, height=300)
@@ -20,12 +22,43 @@ map_widget.set_position(52.23, 21.01)
 map_widget.set_zoom(6)
 
 # === KLASY ===
+def get_city_description(city):
+    try:
+        url = f"https://pl.wikipedia.org/wiki/{city}"
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        paragraphs = soup.select("div.mw-parser-output > p")
+        for para in paragraphs:
+            if para.text.strip():
+                return para.text.strip()
+        return "Brak opisu."
+    except Exception as e:
+        print(f"Nie udało się pobrać opisu: {e}")
+        return "Nie udało się pobrać opisu."
+
+def get_city_image_url(city):
+    try:
+        url = f"https://pl.wikipedia.org/wiki/{city}"
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        infobox = soup.find("table", class_="infobox")
+        if infobox:
+            img = infobox.find("img")
+            if img:
+                return "https:" + img['src']
+    except Exception as e:
+        print(f"Nie udało się pobrać zdjęcia: {e}")
+    return None
+
 class GrillSpot:
     def __init__(self, name, city, description):
         self.name = name
         self.city = city
         self.description = description
         self.coordinates = self.get_coordinates()
+        self.description_text = get_city_description(self.city)
+        self.image_url = get_city_image_url(self.city)
         self.marker = map_widget.set_marker(self.coordinates[0], self.coordinates[1],
                                             text=f"{self.name} - {self.city}")
 
@@ -40,7 +73,7 @@ class GrillSpot:
                 return [float(data[0]['lat']), float(data[0]['lon'])]
         except Exception as e:
             print(f"Błąd pobierania lokalizacji: {e}")
-        return [52.23, 21.01]  # domyślna lokalizacja: Warszawa
+        return [52.23, 21.01]
 
 class User:
     def __init__(self, name, surname, email):
@@ -71,6 +104,29 @@ def update_reservation_list():
 def clear_placeholder(event):
     if entry_res_date.get() == "YYYY-MM-DD":
         entry_res_date.delete(0, END)
+
+def show_city_description(event):
+    selection = listbox_spots.curselection()
+    if not selection:
+        return
+    index = selection[0]
+    spot = grill_spots[index]
+    label_city_description.config(text=f"Opis miasta:\n{spot.description_text}")
+
+    if spot.image_url:
+        try:
+            image_response = requests.get(spot.image_url)
+            image_data = image_response.content
+            image = Image.open(io.BytesIO(image_data))
+            image = image.resize((200, 150), Image.ANTIALIAS)
+            photo = ImageTk.PhotoImage(image)
+            label_city_image.config(image=photo)
+            label_city_image.image = photo
+        except Exception as e:
+            print(f"Nie udało się załadować obrazka: {e}")
+            label_city_image.config(image='')
+    else:
+        label_city_image.config(image='')
 
 # === UŻYTKOWNICY ===
 def add_user():
@@ -148,7 +204,7 @@ def save_edited_grill_spot(index):
     entry_spot_description.delete(0, END)
     button_add_spot.config(text="Dodaj miejsce", command=add_grill_spot)
 
-# === REZERWACJE ===
+# === REZERWACJE  ===
 def make_reservation():
     date = entry_res_date.get().strip()
     if not date:
@@ -241,6 +297,13 @@ Button(spot_frame, text="Edytuj miejsce", command=edit_grill_spot).pack()
 
 listbox_spots = Listbox(spot_frame, height=8, width=30)
 listbox_spots.pack()
+listbox_spots.bind("<<ListboxSelect>>", show_city_description)
+
+label_city_description = Label(spot_frame, text="Opis miasta: ", wraplength=250, justify=LEFT)
+label_city_description.pack(pady=5)
+
+label_city_image = Label(spot_frame)
+label_city_image.pack(pady=5)
 
 # --- REZERWACJE ---
 res_frame = LabelFrame(form_frame, text="Rezerwacje")
