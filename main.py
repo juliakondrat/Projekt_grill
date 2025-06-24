@@ -1,7 +1,6 @@
 from tkinter import *
 import tkintermapview
 import requests
-from bs4 import BeautifulSoup
 
 # === LISTY DANYCH ===
 grill_spots = []
@@ -22,13 +21,22 @@ class GrillSpot:
 
     def get_coordinates(self) -> list:
         try:
-            url = f'https://pl.wikipedia.org/wiki/{self.city}'
-            soup = BeautifulSoup(requests.get(url).text, 'html.parser')
-            lat = soup.select_one('.latitude').text.replace(',', '.')
-            lon = soup.select_one('.longitude').text.replace(',', '.')
-            return [float(lat), float(lon)]
+            url = "https://nominatim.openstreetmap.org/search"
+            params = {'q': self.city, 'format': 'json'}
+            headers = {'User-Agent': 'GrillApp/1.0 (kontakt@example.com)'}
+            response = requests.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+
+            if data:
+                lat = float(data[0]['lat'])
+                lon = float(data[0]['lon'])
+                return [lat, lon]
+            else:
+                raise ValueError("Nie znaleziono lokalizacji")
+
         except Exception as e:
-            print(f"[Błąd współrzędnych] {self.city}: {e}")
+            print(f"[Błąd pobierania współrzędnych OSM] {self.city}: {e}")
             return [52.23, 21.01]  # fallback: Warszawa
 
 class User:
@@ -168,10 +176,9 @@ Label(frame_res_list, text="Lista rezerwacji").pack()
 listbox_reservations = Listbox(frame_res_list, height=8, width=40)
 listbox_reservations.pack()
 
-# Przycisk rezerwacji pod całą kolumną rezerwacji
 Button(frame_res_list, text="Zarezerwuj", command=make_reservation).pack(pady=5)
 
-# === Mapa na dole ===
+# === Mapa ===
 map_widget = tkintermapview.TkinterMapView(root, width=1200, height=400)
 map_widget.pack(pady=10)
 map_widget.set_position(52.23, 21.01)
